@@ -6,7 +6,7 @@ import torchvision
 import torch.nn as nn
 from torchvision import transforms
 from torchvision.utils import save_image
-
+from FID import get_fid
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -67,8 +67,7 @@ G = nn.Sequential(
 D = D.to(device)
 G = G.to(device)
 
-# Binary cross entropy loss and optimizer
-criterion = nn.BCELoss()
+
 d_optimizer = torch.optim.Adam(D.parameters(), lr=0.0002)
 g_optimizer = torch.optim.Adam(G.parameters(), lr=0.0002)
 
@@ -79,6 +78,9 @@ def denorm(x):
 def reset_grad():
     d_optimizer.zero_grad()
     g_optimizer.zero_grad()
+
+# Binary cross entropy loss and optimizer
+criterion = nn.BCELoss()
 
 # Start training
 total_step = len(data_loader)
@@ -141,6 +143,24 @@ for epoch in range(num_epochs):
     if (epoch+1) == 1:
         images = images.reshape(images.size(0), image_channel, image_height, image_width)
         save_image(denorm(images), os.path.join(sample_dir, 'real_images.png'))
+
+    if (epoch) % 10 == 0:
+        # print(d_loss.item(), g_loss.item(), real_score.mean().item(), fake_score.mean().item())
+        
+        info = {
+            'n_sample': 50000,
+            'device': device,
+            'latent_size': latent_size,
+            'image_height': image_height,
+            'image_width': image_width,
+            'image_channel': image_channel
+        }
+
+        fid = get_fid(G, batch_size, info)
+
+        # save ckpt
+        torch.save(G.state_dict(), f'G_epoch{epoch}.ckpt')
+        print(f'fid: {fid}')
     
     # Save sampled images
     fake_images = fake_images.reshape(fake_images.size(0), image_channel, image_height, image_width)
