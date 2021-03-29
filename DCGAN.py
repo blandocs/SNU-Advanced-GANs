@@ -1,5 +1,6 @@
 # Refer to https://github.com/pytorch/examples/blob/master/dcgan/main.py
 # https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
+# python DCGAN.py --dataset cifar10 --dataroot data --cuda
 
 from __future__ import print_function
 import argparse

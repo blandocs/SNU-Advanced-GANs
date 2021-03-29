@@ -1,4 +1,6 @@
 # Refer to https://github.com/yunjey/pytorch-tutorial/blob/master/tutorials/03-advanced/generative_adversarial_network/main.py
+# Command line: nsml run -d cifar10 -e "GAN.py" -g 1 -c 10 --memory "20G"
+# https://docs.nvidia.com/deeplearning/frameworks/pytorch-release-notes/rel_20-03.html#rel_20-03 -> pytorch 1.5.0
 
 import os
 import torch
@@ -8,6 +10,12 @@ from torchvision import transforms
 from torchvision.utils import save_image
 from FID import get_fid
 
+try:
+    import nsml
+    from nsml import DATASET_PATH, SESSION_NAME
+except ImportError:
+    nsml = None
+
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -16,26 +24,30 @@ latent_size = 64
 hidden_size = 256
 image_height, image_width, image_channel = 32, 32, 3
 image_size = image_height*image_width*image_channel
-num_epochs = 200
+num_epochs = 3000
 batch_size = 100
 sample_dir = 'samples'
+ckpt_dir = 'checkpoints'
 
 # Create a directory if not exists
 if not os.path.exists(sample_dir):
     os.makedirs(sample_dir)
+if not os.path.exists(ckpt_dir):
+    os.makedirs(ckpt_dir)
 
 # Image processing
 transform = transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize(mean=(0.5, 0.5, 0.5),   # 3 for RGB channels
                                      std=(0.5, 0.5, 0.5))])
-# transform = transforms.Compose([
-#                 transforms.ToTensor(),
-#                 transforms.Normalize(mean=[0.5],   # 1 for greyscale channels
-#                                      std=[0.5])])
-
+                  
 # CIFAR10 dataset
-cifar10 = torchvision.datasets.CIFAR10(root='data/',
+if nsml:
+    data_dir = os.path.join(DATASET_PATH, 'train')
+else:
+    data_dir = 'data/'
+
+cifar10 = torchvision.datasets.CIFAR10(root=data_dir,
                                    train=True,
                                    transform=transform,
                                    download=True)
@@ -67,9 +79,12 @@ G = nn.Sequential(
 D = D.to(device)
 G = G.to(device)
 
-
 d_optimizer = torch.optim.Adam(D.parameters(), lr=0.0002)
 g_optimizer = torch.optim.Adam(G.parameters(), lr=0.0002)
+
+if device == 'cuda':
+    G = nn.DataParallel(G)
+    D = nn.DataParallel(D)
 
 def denorm(x):
     out = (x + 1) / 2
@@ -144,27 +159,33 @@ for epoch in range(num_epochs):
         images = images.reshape(images.size(0), image_channel, image_height, image_width)
         save_image(denorm(images), os.path.join(sample_dir, 'real_images.png'))
 
-    if (epoch) % 10 == 0:
-        # print(d_loss.item(), g_loss.item(), real_score.mean().item(), fake_score.mean().item())
-        
+    if (epoch+1) % 100 == 1:
         info = {
+            'network': 'GAN',
             'n_sample': 50000,
             'device': device,
             'latent_size': latent_size,
             'image_height': image_height,
             'image_width': image_width,
-            'image_channel': image_channel
+            'image_channel': image_channel,
+            'real_mean_cov': 'real_mean_cov_32.pkl'
         }
 
         fid = get_fid(G, batch_size, info)
-
-        # save ckpt
-        torch.save(G.state_dict(), f'G_epoch{epoch}.ckpt')
         print(f'fid: {fid}')
+            
+        # save ckpt
+        torch.save(G.state_dict(), f'{ckpt_dir}/G_epoch{epoch+1}.ckpt')
+        torch.save(D.state_dict(), f'{ckpt_dir}/D_epoch{epoch+1}.ckpt')
+        
+        # nsml report
+        if nsml:
+            nsml.report(summary=True, step=epoch+1, fid=fid, d_loss=d_loss.item(), g_loss=g_loss.item(), 
+            real_score=real_score.mean().item(), fake_score=fake_score.mean().item())
     
-    # Save sampled images
-    fake_images = fake_images.reshape(fake_images.size(0), image_channel, image_height, image_width)
-    save_image(denorm(fake_images), os.path.join(sample_dir, 'fake_images-{}.png'.format(epoch+1)))
+        # Save sampled images
+        fake_images = fake_images.reshape(fake_images.size(0), image_channel, image_height, image_width)
+        save_image(denorm(fake_images), os.path.join(sample_dir, 'fake_images-{}.png'.format(epoch+1)))
 
 # Save the model checkpoints 
 torch.save(G.state_dict(), 'G.ckpt')

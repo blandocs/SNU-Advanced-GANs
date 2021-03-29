@@ -1,0 +1,8 @@
+__pycache__/
+data/
+samples/
+*.ckpt
+real_mean_cov_*.pkl
+nsml
+nsml_dir/
+*.png
