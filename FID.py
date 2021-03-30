@@ -1,4 +1,6 @@
 # Official FID code: https://github.com/bioinf-jku/TTUR
+# http://mmlab.ie.cuhk.edu.hk/projects/CelebA.html
+# python FID.py --network DCGAN --dataset celeba
 
 import argparse
 import pickle
@@ -11,14 +13,36 @@ import torchvision
 from torchvision import utils, transforms
 from torch.nn import functional as F
 from torch.utils import data
+from torch.utils.data import Dataset
 import os
 from tqdm import tqdm
+from PIL import Image
 
 try:
     import nsml
     from nsml import DATASET_PATH, SESSION_NAME
 except ImportError:
     nsml = None
+
+class DataSetFromDir(Dataset):
+    def __init__(self, main_dir, transform):
+        self.main_dir = main_dir
+        self.transform = transform
+        all_imgs = os.listdir(main_dir)
+        self.total_imgs = []
+
+        for img in all_imgs:
+            if '.jpg' in img:
+                self.total_imgs.append(img)
+
+    def __len__(self):
+        return len(self.total_imgs)
+
+    def __getitem__(self, idx):
+        img_loc = os.path.join(self.main_dir, self.total_imgs[idx])
+        image = Image.open(img_loc).convert("RGB")
+        tensor_image = self.transform(image)
+        return tensor_image, idx
 
 def data_sampler(dataset, shuffle):
     if shuffle:
@@ -31,7 +55,7 @@ def extract_feature_from_generated_samples(
     inception, batch_size, info
 ):
 
-    n_sample, device = info['n_sample'], info['device']
+    n_sample, device, dataset_name = info['n_sample'], info['device'], info['dataset']
 
     transform = transforms.Compose([
         transforms.Resize([info['image_height'], info['image_width']]),
@@ -42,19 +66,29 @@ def extract_feature_from_generated_samples(
 
     features = []
 
-    # CIFAR10 dataset
-    if nsml:
-        data_dir = os.path.join(DATASET_PATH, 'train')
-    else:
-        data_dir = 'data/'
+    if dataset_name == 'cifar10':
+        if nsml:
+            data_dir = os.path.join(DATASET_PATH, 'train')
+        else:
+            data_dir = 'data/'
 
-    cifar10 = torchvision.datasets.CIFAR10(root=data_dir,
-                                    train=True,
-                                    transform=transform,
-                                    download=True)
+        dataset = torchvision.datasets.CIFAR10(root=data_dir,
+                                        train=True,
+                                        transform=transform,
+                                        download=True)
+
+    elif dataset_name == 'celeba':
+        if nsml:
+            data_dir = os.path.join(DATASET_PATH, 'train')
+        else:
+            data_dir = 'data/img_align_celeba'
+
+        dataset = DataSetFromDir(data_dir, transform)
+    
+    dataset, _ = data.random_split(dataset, [n_sample, len(dataset)-n_sample])
 
     # Data loader
-    loader = data.DataLoader(dataset=cifar10, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
+    loader = data.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
 
     # generated images should match with n sample
     print(len(loader), n_sample, batch_size)
@@ -195,6 +229,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch', type=int, default=100)
     parser.add_argument('--n_sample', type=int, default=50000)
     parser.add_argument('--network', type=str, choices=['GAN', 'DCGAN'])
+    parser.add_argument('--dataset', type=str, choices=['cifar10', 'celeba'])
     args = parser.parse_args()
 
     # Hyper-parameters
@@ -212,7 +247,8 @@ if __name__ == '__main__':
         'image_height': image_height,
         'image_width': image_width,
         'image_channel': image_channel,
-        'real_mean_cov': f'real_mean_cov_{image_height}.pkl'
+        'real_mean_cov': f'real_mean_cov_{args.dataset}_{image_height}.pkl',
+        'dataset': args.dataset
     }
 
     fid = get_fid(None, args.batch, info)

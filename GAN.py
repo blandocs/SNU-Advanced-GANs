@@ -1,4 +1,5 @@
 # Refer to https://github.com/yunjey/pytorch-tutorial/blob/master/tutorials/03-advanced/generative_adversarial_network/main.py
+# python GAN.py
 # Command line: nsml run -d cifar10 -e "GAN.py" -g 1 -c 10 --memory "20G"
 # https://docs.nvidia.com/deeplearning/frameworks/pytorch-release-notes/rel_20-03.html#rel_20-03 -> pytorch 1.5.0
 
@@ -168,7 +169,7 @@ for epoch in range(num_epochs):
             'image_height': image_height,
             'image_width': image_width,
             'image_channel': image_channel,
-            'real_mean_cov': 'real_mean_cov_32.pkl'
+            'real_mean_cov': 'real_mean_cov_32_cifar10.pkl'
         }
 
         fid = get_fid(G, batch_size, info)
