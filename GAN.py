@@ -9,6 +9,7 @@ import torchvision
 import torch.nn as nn
 from torchvision import transforms
 from torchvision.utils import save_image
+from calc_inception import load_patched_inception_v3
 from FID import get_fid
 
 try:
@@ -79,13 +80,11 @@ G = nn.Sequential(
 # Device setting
 D = D.to(device)
 G = G.to(device)
+inception = load_patched_inception_v3().eval().to(device)
 
 d_optimizer = torch.optim.Adam(D.parameters(), lr=0.0002)
 g_optimizer = torch.optim.Adam(G.parameters(), lr=0.0002)
 
-if device == 'cuda':
-    G = nn.DataParallel(G)
-    D = nn.DataParallel(D)
 
 def denorm(x):
     out = (x + 1) / 2
@@ -94,6 +93,7 @@ def denorm(x):
 def reset_grad():
     d_optimizer.zero_grad()
     g_optimizer.zero_grad()
+
 
 # Binary cross entropy loss and optimizer
 criterion = nn.BCELoss()
@@ -154,7 +154,7 @@ for epoch in range(num_epochs):
             print('Epoch [{}/{}], Step [{}/{}], d_loss: {:.4f}, g_loss: {:.4f}, D(x): {:.2f}, D(G(z)): {:.2f}' 
                   .format(epoch, num_epochs, i+1, total_step, d_loss.item(), g_loss.item(), 
                           real_score.mean().item(), fake_score.mean().item()))
-    
+            exit()
     # Save real images
     if (epoch+1) == 1:
         images = images.reshape(images.size(0), image_channel, image_height, image_width)
@@ -169,10 +169,11 @@ for epoch in range(num_epochs):
             'image_height': image_height,
             'image_width': image_width,
             'image_channel': image_channel,
-            'real_mean_cov': 'real_mean_cov_32_cifar10.pkl'
+            'real_mean_cov': 'real_mean_cov_32_cifar10.pkl',
+            'dataset': 'cifar10'
         }
 
-        fid = get_fid(G, batch_size, info)
+        fid = get_fid(G, inception, batch_size, info)
         print(f'fid: {fid}')
             
         # save ckpt
