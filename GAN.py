@@ -130,8 +130,8 @@ for epoch in range(num_epochs):
         d_loss = d_loss_real + d_loss_fake
         reset_grad()
         d_loss.backward()
-        d_optimizer.step()
-        
+        d_optimizer.step() 
+
         # ================================================================== #
         #                        Train the generator                         #
         # ================================================================== #
@@ -154,7 +154,7 @@ for epoch in range(num_epochs):
             print('Epoch [{}/{}], Step [{}/{}], d_loss: {:.4f}, g_loss: {:.4f}, D(x): {:.2f}, D(G(z)): {:.2f}' 
                   .format(epoch, num_epochs, i+1, total_step, d_loss.item(), g_loss.item(), 
                           real_score.mean().item(), fake_score.mean().item()))
-            exit()
+
     # Save real images
     if (epoch+1) == 1:
         images = images.reshape(images.size(0), image_channel, image_height, image_width)
